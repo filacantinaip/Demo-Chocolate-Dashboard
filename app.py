@@ -157,6 +157,7 @@ st.markdown(
             color: var(--muted);
             font-size: 0.82rem;
             margin-top: 0.6rem;
+            line-height: 1.5;
         }
 
         .section-title {
@@ -317,7 +318,6 @@ def fmt_minutes(x):
 # ============================================================
 
 df = load_data()
-
 now_pt = datetime.now(TZ)
 
 
@@ -402,7 +402,6 @@ with c4:
         metric_card("Depois da hora", depois, "metric-red"),
         unsafe_allow_html=True
     )
-
 
 st.write("")
 
@@ -502,6 +501,7 @@ with left:
         }
     )
 
+    # Aqui o eixo X é numérico, por isso add_vline funciona sem problema
     fig.add_vline(
         x=0,
         line_width=2,
@@ -527,9 +527,15 @@ with left:
     st.plotly_chart(fig, use_container_width=True)
 
 with right:
+    df_plot = df.copy()
+
+    # Remover timezone só para o Plotly, evitando erro com add_vline e datetimes timezone-aware
+    df_plot["registo_ts_plot"] = df_plot["registo_ts"].dt.tz_localize(None)
+    event_start_plot = EVENT_START.replace(tzinfo=None)
+
     fig2 = px.line(
-        df,
-        x="registo_ts",
+        df_plot,
+        x="registo_ts_plot",
         y="ordem",
         markers=True,
         title="Registos acumulados ao longo do tempo"
@@ -540,13 +546,34 @@ with right:
         marker=dict(size=7, color="#47c8ff")
     )
 
-    fig2.add_vline(
-        x=EVENT_START,
-        line_width=2,
-        line_dash="dash",
-        line_color="#e8e8f0",
-        annotation_text="15h",
-        annotation_position="top"
+    # Linha vertical das 15h sem usar add_vline, para evitar erro com datetime
+    fig2.add_shape(
+        type="line",
+        x0=event_start_plot,
+        x1=event_start_plot,
+        y0=0,
+        y1=1,
+        xref="x",
+        yref="paper",
+        line=dict(
+            color="#e8e8f0",
+            width=2,
+            dash="dash"
+        )
+    )
+
+    fig2.add_annotation(
+        x=event_start_plot,
+        y=1,
+        xref="x",
+        yref="paper",
+        text="15h",
+        showarrow=False,
+        yshift=12,
+        font=dict(
+            color="#e8e8f0",
+            size=12
+        )
     )
 
     fig2.update_layout(
