@@ -1,5 +1,6 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
+import random
 
 import pandas as pd
 import plotly.express as px
@@ -170,6 +171,69 @@ st.markdown(
             margin-bottom: 0.8rem;
         }
 
+        .winner-card {
+            background: radial-gradient(circle at top left, rgba(232,255,71,0.18), transparent 35%),
+                        linear-gradient(180deg, rgba(26,26,31,0.98) 0%, rgba(18,18,22,0.98) 100%);
+            border: 1px solid var(--accent);
+            border-radius: 24px;
+            padding: 28px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 0 34px rgba(232,255,71,0.12);
+        }
+
+        .winner-card::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(232,255,71,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(232,255,71,0.03) 1px, transparent 1px);
+            background-size: 26px 26px;
+            pointer-events: none;
+        }
+
+        .winner-inner {
+            position: relative;
+            z-index: 2;
+        }
+
+        .winner-label {
+            color: var(--accent);
+            font-size: 0.75rem;
+            letter-spacing: 0.18rem;
+            font-weight: 900;
+            text-transform: uppercase;
+            margin-bottom: 0.5rem;
+        }
+
+        .winner-title {
+            color: var(--text);
+            font-size: 1.6rem;
+            font-weight: 900;
+            margin-bottom: 0.7rem;
+        }
+
+        .winner-code {
+            display: inline-block;
+            background: #0b0b0d;
+            color: var(--accent2);
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: 18px 28px;
+            font-size: 3rem;
+            font-weight: 900;
+            letter-spacing: 0.35rem;
+            margin: 0.5rem 0 0.8rem 0;
+        }
+
+        .winner-note {
+            color: var(--muted);
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
         div[data-testid="stMetricValue"] {
             color: var(--text);
         }
@@ -188,19 +252,29 @@ st.markdown(
 
 
 # ============================================================
-# AUTO REFRESH
+# QUERY PARAMS / WINNER
 # ============================================================
 
-st.markdown(
-    f"""
-    <script>
-        setTimeout(function() {{
-            window.location.reload();
-        }}, {REFRESH_SECONDS * 1000});
-    </script>
-    """,
-    unsafe_allow_html=True
-)
+winner_from_url = st.query_params.get("winner", None)
+
+
+# ============================================================
+# AUTO REFRESH
+# ============================================================
+# Só faz refresh automático enquanto ainda não há vencedor.
+# Depois do sorteio, paramos o refresh para o código sorteado não desaparecer.
+
+if not winner_from_url:
+    st.markdown(
+        f"""
+        <script>
+            setTimeout(function() {{
+                window.location.reload();
+            }}, {REFRESH_SECONDS * 1000});
+        </script>
+        """,
+        unsafe_allow_html=True
+    )
 
 
 # ============================================================
@@ -244,7 +318,6 @@ def load_data():
     if df.empty:
         return df
 
-    # Garante colunas esperadas, mesmo que alguma venha em falta
     expected_cols = [
         "event_id",
         "token_id",
@@ -259,8 +332,6 @@ def load_data():
         if col not in df.columns:
             df[col] = None
 
-    # O HTML envia registo_ts em ISO UTC via new Date().toISOString().
-    # Por isso, interpretamos como UTC e convertemos para hora de Portugal.
     df["registo_ts"] = pd.to_datetime(
         df["registo_ts"],
         errors="coerce",
@@ -269,6 +340,11 @@ def load_data():
 
     df = df.dropna(subset=["registo_ts"])
     df = df.sort_values("registo_ts").reset_index(drop=True)
+
+    df["codigo_curto"] = df["codigo_curto"].astype(str).str.strip().str.upper()
+    df = df[df["codigo_curto"].notna()]
+    df = df[df["codigo_curto"] != ""]
+    df = df[df["codigo_curto"] != "NAN"]
 
     df["minutos_relativos"] = (
         df["registo_ts"] - EVENT_START
@@ -286,7 +362,6 @@ def load_data():
         return "Depois da hora"
 
     df["classe_chegada"] = df["minutos_relativos"].apply(classe_chegada)
-
     df["ordem"] = range(1, len(df) + 1)
 
     return df
@@ -311,6 +386,24 @@ def fmt_minutes(x):
     if pd.isna(x):
         return "--"
     return f"{x:.1f} min"
+
+
+def render_winner_card(code):
+    st.markdown(
+        f"""
+        <div class='winner-card'>
+            <div class='winner-inner'>
+                <div class='winner-label'>Sorteio Agent Q</div>
+                <div class='winner-title'>Código vencedor</div>
+                <div class='winner-code'>{code}</div>
+                <div class='winner-note'>
+                    Se este é o teu código, vem ter com a equipa Agent Q para receberes o chocolate.
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 
 # ============================================================
@@ -438,6 +531,62 @@ with c8:
 
 
 # ============================================================
+# SORTEIO
+# ============================================================
+
+st.markdown("<div class='section-title'>Sorteio do chocolate</div>", unsafe_allow_html=True)
+
+valid_codes = sorted(df["codigo_curto"].dropna().astype(str).str.strip().str.upper().unique())
+valid_codes = [c for c in valid_codes if c and c != "NAN"]
+
+winner_code = winner_from_url
+
+if winner_code:
+    render_winner_card(winner_code)
+
+    col_reset, col_space = st.columns([1, 3])
+    with col_reset:
+        if st.button("Limpar sorteio"):
+            if "winner" in st.query_params:
+                del st.query_params["winner"]
+            st.rerun()
+
+else:
+    st.markdown(
+        f"""
+        <div class='metric-card'>
+            <div class='metric-inner'>
+                <div class='metric-label'>Participantes elegíveis</div>
+                <div class='small-note'>
+                    Existem <strong>{len(valid_codes)}</strong> códigos válidos para sorteio.
+                    O sorteio escolhe aleatoriamente um dos códigos registados.
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.write("")
+
+    col_draw, col_info = st.columns([1, 3])
+
+    with col_draw:
+        if st.button("🎲 Sortear vencedor", use_container_width=True):
+            if not valid_codes:
+                st.warning("Ainda não existem códigos válidos para sortear.")
+            else:
+                selected = random.choice(valid_codes)
+                st.query_params["winner"] = selected
+                st.rerun()
+
+    with col_info:
+        st.caption(
+            "Nota: depois de sorteado, o código fica fixado no URL para não desaparecer com o refresh."
+        )
+
+
+# ============================================================
 # INTERPRETATION
 # ============================================================
 
@@ -501,7 +650,6 @@ with left:
         }
     )
 
-    # Aqui o eixo X é numérico, por isso add_vline funciona sem problema
     fig.add_vline(
         x=0,
         line_width=2,
@@ -529,7 +677,6 @@ with left:
 with right:
     df_plot = df.copy()
 
-    # Remover timezone só para o Plotly, evitando erro com add_vline e datetimes timezone-aware
     df_plot["registo_ts_plot"] = df_plot["registo_ts"].dt.tz_localize(None)
     event_start_plot = EVENT_START.replace(tzinfo=None)
 
@@ -546,7 +693,6 @@ with right:
         marker=dict(size=7, color="#47c8ff")
     )
 
-    # Linha vertical das 15h sem usar add_vline, para evitar erro com datetime
     fig2.add_shape(
         type="line",
         x0=event_start_plot,
