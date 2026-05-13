@@ -6,7 +6,7 @@ import plotly.express as px
 import requests
 import streamlit as st
 
-APPS_SCRIPT_URL = "1Yg3jvcIZofEWmYq1cwodKHwPTJyldkJL1n2CuoJTacc"
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyQcHvl-zpFgocpK8vzbWHjbFA1FuqEZjD7yVqPKVMy/dev"
 
 EVENT_NAME = "Demo chocolate"
 
