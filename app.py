@@ -22,8 +22,8 @@ EVENT_NAME = "Demo chocolate"
 TZ = ZoneInfo("Europe/Lisbon")
 
 # Apresentação: 18/05/2025, das 15:00 às 16:00, hora de Portugal
-EVENT_START = datetime(2025, 5, 18, 15, 0, tzinfo=TZ)
-EVENT_END = datetime(2025, 5, 18, 16, 0, tzinfo=TZ)
+EVENT_START = datetime(2026, 5, 18, 15, 0, tzinfo=TZ)
+EVENT_END = datetime(2026, 5, 18, 16, 0, tzinfo=TZ)
 
 DRAW_PASSWORD = "1805"
 REFRESH_SECONDS = 10
