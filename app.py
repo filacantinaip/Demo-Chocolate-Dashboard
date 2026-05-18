@@ -21,9 +21,11 @@ APPS_SCRIPT_URL = (
 EVENT_NAME = "Demo chocolate"
 TZ = ZoneInfo("Europe/Lisbon")
 
-# Hora da apresentação: 13/05/2026 às 15:00, hora de Portugal
-EVENT_START = datetime(2026, 5, 13, 15, 0, tzinfo=TZ)
+# Apresentação: 18/05/2025, das 15:00 às 16:00, hora de Portugal
+EVENT_START = datetime(2025, 5, 18, 15, 0, tzinfo=TZ)
+EVENT_END = datetime(2025, 5, 18, 16, 0, tzinfo=TZ)
 
+DRAW_PASSWORD = "1805"
 REFRESH_SECONDS = 10
 
 
@@ -332,6 +334,8 @@ def load_data():
         if col not in df.columns:
             df[col] = None
 
+    # O HTML envia registo_ts em ISO UTC via new Date().toISOString().
+    # Interpretamos como UTC e convertemos para hora de Portugal.
     df["registo_ts"] = pd.to_datetime(
         df["registo_ts"],
         errors="coerce",
@@ -355,13 +359,14 @@ def load_data():
             return "Sem hora"
         if x < -10:
             return "Muito cedo"
-        if -10 <= x < -2:
-            return "Cedo"
-        if -2 <= x <= 5:
-            return "Em cima da hora"
-        return "Depois da hora"
+        if -10 <= x < 0:
+            return "Antes das 15h"
+        if 0 <= x <= 60:
+            return "Durante o evento"
+        return "Depois das 16h"
 
     df["classe_chegada"] = df["minutos_relativos"].apply(classe_chegada)
+
     df["ordem"] = range(1, len(df) + 1)
 
     return df
@@ -424,7 +429,7 @@ st.markdown(
     f"""
     <div class='hero-sub'>
         Evento: {EVENT_NAME} · 
-        Hora de referência: {EVENT_START.strftime('%d/%m/%Y %H:%M')} · 
+        Janela: {EVENT_START.strftime('%d/%m/%Y %H:%M')}–{EVENT_END.strftime('%H:%M')} · 
         Hora atual: {now_pt.strftime('%d/%m/%Y %H:%M:%S')} · 
         Atualiza a cada {REFRESH_SECONDS}s
     </div>
@@ -449,11 +454,11 @@ if df.empty:
 total = len(df)
 
 muito_cedo = int((df["classe_chegada"] == "Muito cedo").sum())
-cedo = int((df["classe_chegada"] == "Cedo").sum())
-pontual = int((df["classe_chegada"] == "Em cima da hora").sum())
-depois = int((df["classe_chegada"] == "Depois da hora").sum())
+antes_15 = int((df["classe_chegada"] == "Antes das 15h").sum())
+durante = int((df["classe_chegada"] == "Durante o evento").sum())
+depois_16 = int((df["classe_chegada"] == "Depois das 16h").sum())
 
-antes_da_hora = muito_cedo + cedo
+antes_evento = muito_cedo + antes_15
 
 media = df["minutos_relativos"].mean()
 mediana = df["minutos_relativos"].median()
@@ -461,9 +466,9 @@ mediana = df["minutos_relativos"].median()
 primeiro = df["registo_ts"].min()
 ultimo = df["registo_ts"].max()
 
-percent_antes = antes_da_hora / total if total else 0
-percent_pontual = pontual / total if total else 0
-percent_depois = depois / total if total else 0
+percent_antes = antes_evento / total if total else 0
+percent_durante = durante / total if total else 0
+percent_depois = depois_16 / total if total else 0
 
 
 # ============================================================
@@ -480,19 +485,19 @@ with c1:
 
 with c2:
     st.markdown(
-        metric_card("Antes da hora", antes_da_hora, "metric-green"),
+        metric_card("Antes das 15h", antes_evento, "metric-green"),
         unsafe_allow_html=True
     )
 
 with c3:
     st.markdown(
-        metric_card("Em cima da hora", pontual, "metric-blue"),
+        metric_card("Durante 15h–16h", durante, "metric-blue"),
         unsafe_allow_html=True
     )
 
 with c4:
     st.markdown(
-        metric_card("Depois da hora", depois, "metric-red"),
+        metric_card("Depois das 16h", depois_16, "metric-red"),
         unsafe_allow_html=True
     )
 
@@ -546,10 +551,19 @@ if winner_code:
 
     col_reset, col_space = st.columns([1, 3])
     with col_reset:
+        password_clear = st.text_input(
+            "Password para limpar sorteio",
+            type="password",
+            key="password_clear_draw"
+        )
+
         if st.button("Limpar sorteio"):
-            if "winner" in st.query_params:
-                del st.query_params["winner"]
-            st.rerun()
+            if password_clear == DRAW_PASSWORD:
+                if "winner" in st.query_params:
+                    del st.query_params["winner"]
+                st.rerun()
+            else:
+                st.error("Password incorreta.")
 
 else:
     st.markdown(
@@ -569,21 +583,33 @@ else:
 
     st.write("")
 
-    col_draw, col_info = st.columns([1, 3])
+    password = st.text_input(
+        "Password para ativar o sorteio",
+        type="password",
+        key="password_draw"
+    )
 
-    with col_draw:
-        if st.button("🎲 Sortear vencedor", use_container_width=True):
-            if not valid_codes:
-                st.warning("Ainda não existem códigos válidos para sortear.")
-            else:
-                selected = random.choice(valid_codes)
-                st.query_params["winner"] = selected
-                st.rerun()
+    if password == DRAW_PASSWORD:
+        col_draw, col_info = st.columns([1, 3])
 
-    with col_info:
-        st.caption(
-            "Nota: depois de sorteado, o código fica fixado no URL para não desaparecer com o refresh."
-        )
+        with col_draw:
+            if st.button("🎲 Sortear vencedor", use_container_width=True):
+                if not valid_codes:
+                    st.warning("Ainda não existem códigos válidos para sortear.")
+                else:
+                    selected = random.choice(valid_codes)
+                    st.query_params["winner"] = selected
+                    st.rerun()
+
+        with col_info:
+            st.caption(
+                "Sorteio desbloqueado. Depois de sorteado, o código fica fixado no URL para não desaparecer com o refresh."
+            )
+
+    elif password:
+        st.error("Password incorreta.")
+    else:
+        st.caption("Introduz a password para desbloquear o botão de sorteio.")
 
 
 # ============================================================
@@ -597,15 +623,20 @@ if mediana < -10:
         "A mediana indica que a maioria das pessoas aderiu com alguma antecedência. "
         "Para organização de eventos, isto sugere boa capacidade de mobilização antes do início."
     )
-elif -10 <= mediana <= 5:
+elif -10 <= mediana < 0:
     leitura = (
-        "A mediana está próxima da hora de início. "
-        "Isto sugere que a adesão acontece sobretudo em cima do evento."
+        "A mediana está antes das 15h, mas próxima do início. "
+        "Isto sugere adesão concentrada nos minutos imediatamente anteriores à apresentação."
+    )
+elif 0 <= mediana <= 60:
+    leitura = (
+        "A mediana está dentro da janela do evento. "
+        "Isto sugere que a adesão ocorreu já durante a apresentação ou enquanto as pessoas entravam."
     )
 else:
     leitura = (
-        "A mediana está depois da hora de início. "
-        "Isto sugere adesão tardia ou chegada progressiva após o arranque."
+        "A mediana está depois das 16h. "
+        "Isto sugere adesão tardia ou interação com o QR após o evento."
     )
 
 st.markdown(
@@ -615,9 +646,9 @@ st.markdown(
             <div class='metric-label'>Resumo interpretativo</div>
             <div class='small-note'>{leitura}</div>
             <div class='small-note'>
-                Antes da hora: {percent_antes:.0%} · 
-                Em cima da hora: {percent_pontual:.0%} · 
-                Depois da hora: {percent_depois:.0%}
+                Antes das 15h: {percent_antes:.0%} · 
+                Durante 15h–16h: {percent_durante:.0%} · 
+                Depois das 16h: {percent_depois:.0%}
             </div>
         </div>
     </div>
@@ -639,13 +670,13 @@ with left:
         df,
         x="minutos_relativos",
         color="classe_chegada",
-        nbins=20,
-        title="Distribuição das chegadas face às 15h",
+        nbins=24,
+        title="Distribuição dos registos face às 15h",
         color_discrete_map={
             "Muito cedo": "#47ffb0",
-            "Cedo": "#e8ff47",
-            "Em cima da hora": "#47c8ff",
-            "Depois da hora": "#ff6b47",
+            "Antes das 15h": "#e8ff47",
+            "Durante o evento": "#47c8ff",
+            "Depois das 16h": "#ff6b47",
             "Sem hora": "#6b6b80",
         }
     )
@@ -659,12 +690,21 @@ with left:
         annotation_position="top"
     )
 
+    fig.add_vline(
+        x=60,
+        line_width=2,
+        line_dash="dot",
+        line_color="#e8e8f0",
+        annotation_text="16h",
+        annotation_position="top"
+    )
+
     fig.update_layout(
         paper_bgcolor="#1a1a1f",
         plot_bgcolor="#1a1a1f",
         font_color="#e8e8f0",
         legend_title_text="",
-        xaxis_title="Minutos face à hora de referência",
+        xaxis_title="Minutos face às 15h",
         yaxis_title="N.º de pessoas",
         margin=dict(l=20, r=20, t=55, b=35)
     )
@@ -679,6 +719,7 @@ with right:
 
     df_plot["registo_ts_plot"] = df_plot["registo_ts"].dt.tz_localize(None)
     event_start_plot = EVENT_START.replace(tzinfo=None)
+    event_end_plot = EVENT_END.replace(tzinfo=None)
 
     fig2 = px.line(
         df_plot,
@@ -693,6 +734,7 @@ with right:
         marker=dict(size=7, color="#47c8ff")
     )
 
+    # Linha vertical das 15h
     fig2.add_shape(
         type="line",
         x0=event_start_plot,
@@ -714,6 +756,36 @@ with right:
         xref="x",
         yref="paper",
         text="15h",
+        showarrow=False,
+        yshift=12,
+        font=dict(
+            color="#e8e8f0",
+            size=12
+        )
+    )
+
+    # Linha vertical das 16h
+    fig2.add_shape(
+        type="line",
+        x0=event_end_plot,
+        x1=event_end_plot,
+        y0=0,
+        y1=1,
+        xref="x",
+        yref="paper",
+        line=dict(
+            color="#e8e8f0",
+            width=2,
+            dash="dot"
+        )
+    )
+
+    fig2.add_annotation(
+        x=event_end_plot,
+        y=1,
+        xref="x",
+        yref="paper",
+        text="16h",
         showarrow=False,
         yshift=12,
         font=dict(
